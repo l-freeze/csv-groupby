@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -15,6 +16,13 @@ func main() {
 	columnNameOrIndex := flag.String("column", "", "Name of the column")
 	delimiter := flag.String("delimiter", ",", "Delimiter used in the CSV file")
 	header := flag.Bool("header", false, "Indicate if the CSV file has a header row")
+
+	// 隠しオプション io.ReaderのバッファサイズKBを指定する(デフォルトは4KB)
+	bufferSize := flag.Int("buffer", 0, "Read buffer size in KB")
+
+	// 隠しオプション worker pool size
+	//workerPoolSize := flag.Int("worker", runtime.NumCPU(), "Number of worker pool size")
+
 	flag.Parse()
 
 	if *filePath == "" || *columnNameOrIndex == "" {
@@ -29,7 +37,17 @@ func main() {
 	}
 	defer file.Close()
 
-	reader := csv.NewReader(file)
+	var ioReader io.Reader = file
+	if *bufferSize > 0 {
+		ioReader = bufio.NewReaderSize(file, *bufferSize*1024)
+		if *bufferSize > 1024 {
+			log.Printf("Using buffer size: %d MB\n", *bufferSize/1024)
+		} else {
+			log.Printf("Using buffer size: %d KB\n", *bufferSize)
+		}
+	}
+
+	reader := csv.NewReader(ioReader)
 	reader.Comma = rune((*delimiter)[0]) // Set the delimiter
 
 	// Satisfy the column index
