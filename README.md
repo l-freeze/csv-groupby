@@ -50,5 +50,9 @@ Group by 4 counts
 
 other example
 ```bash
+# バッファ指定(KB)
 go run main.go -file=sample_data/sample.csv -column=住所 -delimiter="," --header --buffer=$((1024*10))
+
+# worker数指定
+go run main.go -file=sample_data/sample.csv -column=住所 -delimiter="," --header --buffer=$((1024*10)) --worker=8
 ```
