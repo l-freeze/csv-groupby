@@ -7,23 +7,31 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime"
 	"strconv"
+	"sync"
 )
 import "flag"
 
 func main() {
 	filePath := flag.String("file", "", "Path to the CSV file")
-	columnNameOrIndex := flag.String("column", "", "Name of the column")
+	columnNameOrIndex := flag.String("column", "", "ColumnName or columnIndex. Header is required if ColumnName is used.")
 	delimiter := flag.String("delimiter", ",", "Delimiter used in the CSV file")
-	header := flag.Bool("header", false, "Indicate if the CSV file has a header row")
+	header := flag.Bool("header", false, "Indicate if the CSV file has a header row. Header is required if ColumnName is used.")
 
-	// 隠しオプション io.ReaderのバッファサイズKBを指定する(デフォルトは4KB)
+	// io.ReaderのバッファサイズKBを指定する(デフォルトは4KB)
 	bufferSize := flag.Int("buffer", 0, "Read buffer size in KB")
 
-	// 隠しオプション worker pool size
-	//workerPoolSize := flag.Int("worker", runtime.NumCPU(), "Number of worker pool size")
+	// worker pool size
+	workerPoolSize := flag.Int("worker", 1, fmt.Sprintf("Number of worker pool size(max:%d)", runtime.NumCPU()))
 
 	flag.Parse()
+
+	if *workerPoolSize > runtime.NumCPU() {
+		fmt.Printf("Worker pool size is limited to %d\n", runtime.NumCPU())
+		*workerPoolSize = runtime.NumCPU()
+		os.Exit(0)
+	}
 
 	if *filePath == "" || *columnNameOrIndex == "" {
 		fmt.Println("Please provide both file and column name")
@@ -82,29 +90,66 @@ func main() {
 		}
 	}
 
+	// worker pool
+	var wg sync.WaitGroup
+	jobs := make(chan []string, 1000)
+	results := make(chan map[string]int, *workerPoolSize)
+
+	for i := 0; i < *workerPoolSize; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			log.Printf("Worker %d started\n", workerID)
+
+			subCounts := make(map[string]int)
+			for job := range jobs {
+				if columnIndex >= len(job) {
+					//log.Fatalf("Column index %d out of range for record: %v", columnIndex, job)
+				}
+				value := job[columnIndex]
+				subCounts[value]++
+			}
+			//for name, count := range subCounts {
+			//	fmt.Printf("[worker:%d]%s: %d\n", workerID, name, count)
+			//}
+
+			results <- subCounts
+			log.Printf("Worker %d finished\n", workerID)
+		}(i)
+	}
+
 	// Count group by colum
+	go func() {
+		for {
+			record, err := reader.Read()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				log.Fatalf("Error reading record: %v", err)
+			}
+			jobs <- record
+		}
+		close(jobs)
+	}()
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+	log.Printf("All workers finished\n")
+
 	counts := make(map[string]int)
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
+	for count := range results {
+		for name, c := range count {
+			counts[name] += c
 		}
-		if err != nil {
-			log.Fatalf("Error reading record: %v", err)
-		}
-
-		if columnIndex >= len(record) {
-			log.Fatalf("Column index %d out of range for record: %v", columnIndex, record)
-		}
-
-		value := record[columnIndex]
-		counts[value]++
 	}
 
 	// Print the counts
-	fmt.Printf("Group by %v counts\n\n", *columnNameOrIndex)
 	for name, count := range counts {
 		fmt.Printf("%s: %d\n", name, count)
 	}
+	fmt.Printf("Group by %v counts\n\n", *columnNameOrIndex)
 
 }
