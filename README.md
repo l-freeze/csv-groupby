@@ -9,6 +9,7 @@ CSVをgroup by countするツール
 - column=: 列名 or 列番号(必須)
 - header: 列名指定の場合必須
 - delimiter=: 区切り文字1字(任意。デフォルトは`,`)
+- buffer=: バッファサイズKB(任意。デフォルトは`4KB`)
 
 ### コマンド例
 区切り文字指定、ヘッダー行あり、列名指定
@@ -45,4 +46,9 @@ Group by 4 counts
 性別: 1
 男: 247
 女: 253
+```
+
+other example
+```bash
+go run main.go -file=sample_data/sample.csv -column=住所 -delimiter="," --header --buffer=$((1024*10))
 ```
