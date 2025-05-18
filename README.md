@@ -50,6 +50,11 @@ Group by 4 counts
 
 other example
 ```bash
+# json要素指定(headerありcsv)
+go run main.go -file=sample_data/sample.csv -column=その他#hobby -delimiter="," --header --worker=1
+# json要素指定(headerなしcsv)
+./csv-groupby -file=sample_data/sample.csv -column=7#hobby -delimiter="," --worker=1
+
 # バッファ指定(KB)
 go run main.go -file=sample_data/sample.csv -column=住所 -delimiter="," --header --buffer=$((1024*10))
 
