@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"encoding/csv"
 	"fmt"
+	"github.com/tidwall/gjson"
 	"io"
 	"log"
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 )
 import "flag"
@@ -34,7 +36,7 @@ func main() {
 	}
 
 	if *filePath == "" || *columnNameOrIndex == "" {
-		fmt.Println("Please provide both file and column name")
+		fmt.Println("Please provide both -file and -column")
 		os.Exit(1)
 	}
 
@@ -57,6 +59,14 @@ func main() {
 
 	reader := csv.NewReader(ioReader)
 	reader.Comma = rune((*delimiter)[0]) // Set the delimiter
+
+	//Specified json?
+	parts := strings.SplitN(*columnNameOrIndex, "#", 2)
+	var jsonPath string
+	if len(parts) == 2 {
+		jsonPath = parts[1]
+		columnNameOrIndex = &parts[0]
+	}
 
 	// Satisfy the column index
 	var columnIndex = -1
@@ -104,9 +114,17 @@ func main() {
 			subCounts := make(map[string]int)
 			for job := range jobs {
 				if columnIndex >= len(job) {
-					//log.Fatalf("Column index %d out of range for record: %v", columnIndex, job)
+					log.Fatalf("Column index %d out of range for record: %v", columnIndex, job)
 				}
-				value := job[columnIndex]
+
+				var value string
+				if jsonPath != "" {
+					cellData := job[columnIndex]
+					json := gjson.Get(cellData, jsonPath)
+					value = jsonPath + "." + json.String()
+				} else {
+					value = job[columnIndex]
+				}
 				subCounts[value]++
 			}
 			//for name, count := range subCounts {
