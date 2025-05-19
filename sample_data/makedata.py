@@ -58,6 +58,12 @@ def create_dataset(n):
             other["favorite_music"] = random.choice(music)
         if random.random() < 0.4:
             other["favorite_book"] = random.choice(books)
+        if random.random() < 0.6:
+            other["status"] = {
+                "strength" : random.randint(1, 100),
+                "arms" : "sword" if random.random() < 0.5 else "gun",
+                "agility" : random.randint(1, 100),
+            }
 
         rows.append([
             uid,

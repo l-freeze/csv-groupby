@@ -15,9 +15,14 @@ import (
 )
 import "flag"
 
+type GroupingIndex struct {
+	Index    int
+	JsonPath string
+}
+
 func main() {
 	filePath := flag.String("file", "", "Path to the CSV file")
-	columnNameOrIndex := flag.String("column", "", "ColumnName or columnIndex. Header is required if ColumnName is used.")
+	columnNamesOrIndexes := flag.String("column", "", "ColumnName or columnIndex. Header is required if ColumnName is used.")
 	delimiter := flag.String("delimiter", ",", "Delimiter used in the CSV file")
 	header := flag.Bool("header", false, "Indicate if the CSV file has a header row. Header is required if ColumnName is used.")
 
@@ -35,7 +40,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *filePath == "" || *columnNameOrIndex == "" {
+	if *filePath == "" || *columnNamesOrIndexes == "" {
 		fmt.Println("Please provide both -file and -column")
 		os.Exit(1)
 	}
@@ -60,16 +65,8 @@ func main() {
 	reader := csv.NewReader(ioReader)
 	reader.Comma = rune((*delimiter)[0]) // Set the delimiter
 
-	//Specified json?
-	parts := strings.SplitN(*columnNameOrIndex, "#", 2)
-	var jsonPath string
-	if len(parts) == 2 {
-		jsonPath = parts[1]
-		columnNameOrIndex = &parts[0]
-	}
-
 	// Satisfy the column index
-	var columnIndex = -1
+	var groupingIndexes []GroupingIndex
 	if *header {
 		// Read the first row (header)
 		headerRow, err := reader.Read()
@@ -78,31 +75,65 @@ func main() {
 		}
 
 		// Find the index of the specified column
-		for i, col := range headerRow {
-			if col == *columnNameOrIndex {
-				columnIndex = i
-				break
+		splitColumnNames := strings.Split(*columnNamesOrIndexes, ",")
+		var columnNames []string
+		for _, col := range splitColumnNames {
+			if col != "" {
+				columnNames = append(columnNames, col)
 			}
 		}
 
-		if columnIndex == -1 {
-			log.Fatalf("Column %s not found in header", *columnNameOrIndex)
+		for _, columnName := range columnNames {
+			parts := strings.SplitN(columnName, "#", 2)
+			var jsonPath string
+			groupingColumn := parts[0]
+			if len(parts) == 2 {
+				jsonPath = parts[1]
+			}
+
+			for i, col := range headerRow {
+				if col == groupingColumn {
+					groupingIndexes = append(groupingIndexes, GroupingIndex{Index: i, JsonPath: jsonPath})
+					break
+				}
+			}
 		}
 
-		log.Printf("Column %s found at index %d\n", *columnNameOrIndex, columnIndex)
+		if groupingIndexes == nil {
+			log.Fatalf("Column %s not found in header", *columnNamesOrIndexes)
+		}
+
+		log.Printf("Column %s found at index %#v\n", *columnNamesOrIndexes, groupingIndexes)
 
 	} else {
-		if idx, err := strconv.Atoi(*columnNameOrIndex); err == nil {
-			columnIndex = idx
-			fmt.Printf("Column index provided: %d\n", columnIndex)
-		} else {
-			log.Fatalf("Invalid column index: %s", *columnNameOrIndex)
+		splitColumnIndexes := strings.Split(*columnNamesOrIndexes, ",")
+		for _, columnIndex := range splitColumnIndexes {
+
+			parts := strings.SplitN(columnIndex, "#", 2)
+			idxString := parts[0]
+			if idx, err := strconv.Atoi(idxString); err == nil {
+				var jsonPath string
+
+				if len(parts) == 2 {
+					jsonPath = parts[1]
+				}
+
+				groupingIndexes = append(groupingIndexes, GroupingIndex{Index: idx, JsonPath: jsonPath})
+
+			} else {
+				log.Fatalf("Invalid column index: %s", *columnNamesOrIndexes)
+			}
+
 		}
+	}
+
+	if len(groupingIndexes) == 0 {
+		log.Fatalf(" Unspecified column")
 	}
 
 	// worker pool
 	var wg sync.WaitGroup
-	jobs := make(chan []string, 1000)
+	jobs := make(chan []string, 1000) // CSVの行を格納するチャネル
 	results := make(chan map[string]int, *workerPoolSize)
 
 	for i := 0; i < *workerPoolSize; i++ {
@@ -113,19 +144,25 @@ func main() {
 
 			subCounts := make(map[string]int)
 			for job := range jobs {
-				if columnIndex >= len(job) {
-					log.Fatalf("Column index %d out of range for record: %v", columnIndex, job)
+				for _, columnIndex := range groupingIndexes {
+					if columnIndex.Index < 0 || columnIndex.Index >= len(job) {
+						log.Fatalf("Column index %d out of range for record: %v", columnIndex, job)
+					}
 				}
 
-				var value string
-				if jsonPath != "" {
-					cellData := job[columnIndex]
-					json := gjson.Get(cellData, jsonPath)
-					value = jsonPath + "." + json.String()
-				} else {
-					value = job[columnIndex]
+				var countKeys []string
+				for _, columnIndex := range groupingIndexes {
+					if columnIndex.JsonPath != "" {
+						cellValue := job[columnIndex.Index]
+						json := gjson.Get(cellValue, columnIndex.JsonPath)
+						countKey := columnIndex.JsonPath + "=" + json.String()
+						countKeys = append(countKeys, countKey)
+					} else {
+						countKeys = append(countKeys, job[columnIndex.Index])
+					}
 				}
-				subCounts[value]++
+				subCounts[strings.Join(countKeys, ",")]++
+
 			}
 			//for name, count := range subCounts {
 			//	fmt.Printf("[worker:%d]%s: %d\n", workerID, name, count)
@@ -168,6 +205,6 @@ func main() {
 	for name, count := range counts {
 		fmt.Printf("%s: %d\n", name, count)
 	}
-	fmt.Printf("Group by %v counts\n\n", *columnNameOrIndex)
+	fmt.Printf("Group by %v counts\n\n", *columnNamesOrIndexes)
 
 }

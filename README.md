@@ -14,7 +14,7 @@ CSVをgroup by countするツール
 ### コマンド例
 区切り文字指定、ヘッダー行あり、列名指定
 ```bash
-$ go run main.go -file=sample_data/sample_500.csv -column=姓 -delimiter="," --header
+$ csv-groupby -file=sample_data/sample_500.csv -column=姓 -delimiter="," --header
 ```
 結果
 ```text
@@ -36,7 +36,7 @@ Smith: 63
 
 区切り文字指定、ヘッダー行なし、列番号指定
 ```bash
-$ go run main.go -file=sample_data/sample_500.csv -column=4
+$ csv-groupby -file=sample_data/sample_500.csv -column=4
 ```
 結果
 ```text
@@ -51,13 +51,22 @@ Group by 4 counts
 other example
 ```bash
 # json要素指定(headerありcsv)
-go run main.go -file=sample_data/sample.csv -column=その他#hobby -delimiter="," --header --worker=1
+csv-groupby  -file=sample_data/sample.csv -column=その他#hobby -delimiter="," --header --worker=1
+csv-groupby -file=sample_data/sample.csv -column="その他#status.arms" -delimiter="," --worker=1 --header
 # json要素指定(headerなしcsv)
-./csv-groupby -file=sample_data/sample.csv -column=7#hobby -delimiter="," --worker=1
+csv-groupby -file=sample_data/sample.csv -column=7#hobby -delimiter="," --worker=1
 
+# 複数列指定
+csv-groupby -file=sample_data/sample.csv -column="住所,その他#status.arms" -delimiter="," --worker=1 --header|wc -l
+csv-groupby -file=sample_data/sample.csv -column="5,7#status.arms" -delimiter="," --worker=1|wc -l
+
+```
+
+performance option
+```bash
 # バッファ指定(KB)
-go run main.go -file=sample_data/sample.csv -column=住所 -delimiter="," --header --buffer=$((1024*10))
+./csv-groupby -file=sample_data/sample.csv -column=住所 -delimiter="," --header --buffer=$((1024*10))
 
 # worker数指定
-go run main.go -file=sample_data/sample.csv -column=住所 -delimiter="," --header --buffer=$((1024*10)) --worker=8
+./csv-groupby -file=sample_data/sample.csv -column=住所 -delimiter="," --header --buffer=$((1024*10)) --worker=8
 ```
