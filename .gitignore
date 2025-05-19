@@ -1,3 +1,5 @@
+csv-groupby
+sample_data/*.csv
 .idea
 .venv
 .DS_store
